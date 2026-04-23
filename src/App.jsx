@@ -349,8 +349,9 @@ export default function App() {
 
         const emailHtml = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 20px; border-radius: 10px 10px 0 0;">
-              <h2 style="color: white; margin: 0;">🤖 IA Project Manager</h2>
+            <div style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 20px; border-radius: 10px 10px 0 0; text-align: center;">
+              <img src="https://ia-project-manager-jqv8.vercel.app/mais-ia.jpeg" alt="Mais IA" style="max-height: 60px; margin-bottom: 10px;" />
+              <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Inteligência para Novas Soluções</p>
             </div>
             
             <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none;">
@@ -373,13 +374,13 @@ export default function App() {
                 </tr>
               </table>
               
-              <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; border-left: 4px solid #7c3aed;">
+              <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; border-left: 4px solid #2563eb;">
                 <p style="margin: 0; color: #1f2937; white-space: pre-wrap;">${message}</p>
               </div>
               
               <div style="text-align: center; margin-top: 30px;">
-                <a href="https://ia-project-manager.vercel.app" 
-                   style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); 
+                <a href="https://ia-project-manager-jqv8.vercel.app" 
+                   style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); 
                           color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; 
                           font-weight: bold; font-size: 16px;">
                   Acessar o Sistema
@@ -389,7 +390,7 @@ export default function App() {
             
             <div style="background: #f9fafb; padding: 15px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb; border-top: none;">
               <p style="color: #9ca3af; font-size: 12px; margin: 0; text-align: center;">
-                Este é um e-mail automático do IA Project Manager.<br>
+                Este é um e-mail automático da Mais IA.<br>
                 © ${new Date().getFullYear()} Mais Escoramentos
               </p>
             </div>
@@ -482,22 +483,29 @@ export default function App() {
     );
   }
 
-  // TELA DE LOGIN
+  // ========================================
+  // 🔐 TELA DE LOGIN - ATUALIZADA COM LOGO
+  // ========================================
   if (!userRole) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 selection:bg-blue-200">
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-8 max-w-4xl w-full animate-in zoom-in-95 flex flex-col md:flex-row gap-8">
           
+          {/* Lado esquerdo - Logo e Título */}
           <div className="md:w-1/3 flex flex-col justify-center items-center text-center md:border-r border-slate-100 md:pr-8">
-            <div className="bg-blue-600 w-20 h-20 rounded-2xl flex items-center justify-center mb-6 shadow-lg text-white">
-              <FolderKanban size={40} />
-            </div>
-            <h1 className="text-3xl font-bold text-slate-800 leading-tight mb-3">IA Project<br/>Manager</h1>
-            <p className="text-slate-500 text-sm">Gestão centralizada de demandas, prompts e soluções baseadas em Inteligência Artificial.</p>
+            <img 
+              src="/mais-ia.jpeg" 
+              alt="Mais IA" 
+              className="w-40 h-auto mb-4 rounded-lg shadow-md"
+            />
+            <p className="text-slate-500 text-sm">Inteligência para Novas Soluções</p>
+            <p className="text-slate-400 text-xs mt-4">Gestão centralizada de demandas, prompts e soluções baseadas em IA.</p>
           </div>
 
+          {/* Lado direito - Formulários de Login */}
           <div className="md:w-2/3 flex flex-col gap-6 justify-center">
             
+            {/* Login Solicitante */}
             <div className="p-6 border border-slate-200 rounded-xl bg-slate-50 hover:border-emerald-300 transition-colors shadow-sm">
               <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4 text-lg">
                 <Users className="text-emerald-600"/> Acesso do Solicitante
@@ -516,12 +524,14 @@ export default function App() {
               </form>
             </div>
 
+            {/* Divisor */}
             <div className="relative flex items-center py-2">
               <div className="flex-grow border-t border-slate-200"></div>
               <span className="flex-shrink-0 mx-4 text-slate-400 text-xs font-medium uppercase tracking-wider">Acesso Restrito</span>
               <div className="flex-grow border-t border-slate-200"></div>
             </div>
 
+            {/* Login Admin */}
             <div className="p-6 border border-slate-200 rounded-xl bg-white hover:border-blue-300 transition-colors">
               <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4">
                 <ShieldCheck className="text-blue-600"/> Gestor do Sistema (Bruno)
@@ -1012,7 +1022,9 @@ export default function App() {
     );
   };
 
-  // --- RENDERIZAÇÃO PRINCIPAL ---
+  // ========================================
+  // 🎨 RENDERIZAÇÃO PRINCIPAL - HEADER COM LOGO
+  // ========================================
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-blue-200">
       {toast && (
@@ -1022,14 +1034,19 @@ export default function App() {
         </div>
       )}
 
-      {/* Header & Navigation */}
+      {/* Header & Navigation - ATUALIZADO COM LOGO */}
       <header className="bg-slate-900 text-white sticky top-0 z-30 shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <div className="bg-blue-600 p-2 rounded-lg"><LayoutDashboard size={24} /></div>
+              {/* Logo no lugar do ícone */}
+              <img 
+                src="/mais-ia.jpeg" 
+                alt="Mais IA" 
+                className="h-10 w-auto rounded-lg"
+              />
               <div className="hidden sm:block">
-                <h1 className="font-bold text-xl leading-none">IA Project Manager</h1>
+                <h1 className="font-bold text-xl leading-none">Mais IA</h1>
                 <span className="text-xs text-slate-400">
                   {userRole === 'admin' ? 'Acesso Administrativo' : 'Portal do Solicitante'}
                 </span>
