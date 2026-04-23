@@ -3,7 +3,8 @@ import {
   LayoutDashboard, FolderKanban, PlusCircle, PieChart, 
   Search, Edit, Trash2, Eye, 
   Copy, Check, Clock, User, Tag, X, FileJson, ChevronRight, 
-  History, Briefcase, Paperclip, LogOut, ShieldCheck, Users, Lock, Mail, Globe
+  History, Briefcase, Paperclip, LogOut, ShieldCheck, Users, Lock, Mail, Globe,
+  MessageSquare, AlertCircle, Send, Bell, MessageCircle
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
@@ -11,10 +12,11 @@ import { supabase } from './lib/supabase';
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "bruno123";
 
 const STATUS_CONFIG = {
-  planning: { label: 'Planejamento', color: 'bg-amber-100 text-amber-800 border-amber-200' },
-  development: { label: 'Desenvolvimento', color: 'bg-blue-100 text-blue-800 border-blue-200' },
-  testing: { label: 'Testes', color: 'bg-rose-100 text-rose-800 border-rose-200' },
-  completed: { label: 'Concluído', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' }
+  planning: { label: 'Planejamento', color: 'bg-amber-100 text-amber-800 border-amber-200', icon: Clock },
+  awaiting_info: { label: 'Aguardando Info', color: 'bg-purple-100 text-purple-800 border-purple-200', icon: AlertCircle },
+  development: { label: 'Desenvolvimento', color: 'bg-blue-100 text-blue-800 border-blue-200', icon: LayoutDashboard },
+  testing: { label: 'Testes', color: 'bg-rose-100 text-rose-800 border-rose-200', icon: Search },
+  completed: { label: 'Concluído', color: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: Check }
 };
 
 const DEPARTMENTS = [
@@ -67,14 +69,22 @@ export default function App() {
   const [editingProject, setEditingProject] = useState(null);
   const [viewingProject, setViewingProject] = useState(null);
   const [viewingHistory, setViewingHistory] = useState(null);
+  const [viewingComments, setViewingComments] = useState(null);
   const [toast, setToast] = useState(null);
+
+  // Contador de projetos que precisam de atenção
+  const pendingAttentionCount = projects.filter(p => {
+    if (userRole === 'admin') {
+      return p.attentionFor === 'admin';
+    } else {
+      return p.requesterEmail?.toLowerCase() === userEmail.toLowerCase() && p.attentionFor === 'requester';
+    }
+  }).length;
 
   // --- EFEITOS (SUPABASE REALTIME) ---
   useEffect(() => {
-    // Buscar projetos iniciais
     fetchProjects();
 
-    // Configurar subscription para realtime
     const channel = supabase
       .channel('projects-changes')
       .on(
@@ -93,6 +103,13 @@ export default function App() {
             setProjects(prev => 
               prev.map(p => p.id === payload.new.id ? toCamelCase(payload.new) : p)
             );
+            // Atualiza o projeto sendo visualizado se for o mesmo
+            if (viewingProject && viewingProject.id === payload.new.id) {
+              setViewingProject(toCamelCase(payload.new));
+            }
+            if (viewingComments && viewingComments.id === payload.new.id) {
+              setViewingComments(toCamelCase(payload.new));
+            }
           } else if (payload.eventType === 'DELETE') {
             setProjects(prev => prev.filter(p => p.id !== payload.old.id));
           }
@@ -124,7 +141,6 @@ export default function App() {
     }
   };
 
-  // Força ir para dashboard se for admin, ou projects se for solicitante após login
   useEffect(() => {
     if (userRole === 'admin') setActiveTab('dashboard');
     else if (userRole === 'requester') setActiveTab('projects');
@@ -215,7 +231,6 @@ export default function App() {
     const formData = new FormData(e.target);
     const formObj = Object.fromEntries(formData.entries());
     
-    // Se for solicitante, garante que o e-mail e o status inicial sejam travados
     if (userRole === 'requester') {
       formObj.requesterEmail = userEmail;
       formObj.status = editingProject ? editingProject.status : 'planning';
@@ -229,7 +244,6 @@ export default function App() {
 
     try {
       if (editingProject) {
-        // Atualizar existente
         const newVersion = {
           version: (editingProject.versions || []).length + 1,
           date: new Date().toISOString(),
@@ -251,7 +265,6 @@ export default function App() {
         if (error) throw error;
         showToast('Projeto atualizado com sucesso!');
       } else {
-        // Criar novo
         const { error } = await supabase
           .from('projects')
           .insert([toSnakeCase(projectData)]);
@@ -286,6 +299,66 @@ export default function App() {
     }
   };
 
+  // --- SISTEMA DE COMENTÁRIOS ---
+  const handleSendComment = async (projectId, message, requestInfo = false) => {
+    if (!message.trim()) return;
+
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+
+    const newComment = {
+      id: crypto.randomUUID(),
+      author: userRole === 'admin' ? 'Bruno Andrade (Admin)' : userEmail,
+      role: userRole,
+      message: message.trim(),
+      date: new Date().toISOString(),
+      isInfoRequest: requestInfo
+    };
+
+    const updatedComments = [...(project.comments || []), newComment];
+    
+    // Define quem precisa prestar atenção
+    const attentionFor = userRole === 'admin' ? 'requester' : 'admin';
+    
+    // Se admin está solicitando info, muda o status
+    const newStatus = requestInfo ? 'awaiting_info' : project.status;
+
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          comments: updatedComments,
+          attention_for: attentionFor,
+          needs_attention: true,
+          status: newStatus
+        })
+        .eq('id', projectId);
+
+      if (error) throw error;
+      
+      showToast(requestInfo ? 'Solicitação de informações enviada!' : 'Comentário enviado!');
+    } catch (error) {
+      console.error("Erro ao enviar comentário:", error);
+      showToast('Erro ao enviar comentário', 'error');
+    }
+  };
+
+  const handleMarkAsRead = async (projectId) => {
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          needs_attention: false,
+          attention_for: null
+        })
+        .eq('id', projectId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error("Erro ao marcar como lido:", error);
+    }
+  };
+
   // --- COMPONENTES DA INTERFACE ---
   const CodeBlock = ({ label, content }) => (
     <div className="mb-6">
@@ -306,6 +379,21 @@ export default function App() {
     </div>
   );
 
+  // Badge de atenção
+  const AttentionBadge = ({ project, small = false }) => {
+    const needsMyAttention = (userRole === 'admin' && project.attentionFor === 'admin') ||
+                             (userRole === 'requester' && project.attentionFor === 'requester');
+    
+    if (!needsMyAttention) return null;
+    
+    return (
+      <span className={`inline-flex items-center gap-1 bg-red-500 text-white rounded-full animate-pulse ${small ? 'px-1.5 py-0.5 text-xs' : 'px-2 py-1 text-xs'}`}>
+        <Bell size={small ? 10 : 12} />
+        {!small && (userRole === 'admin' ? 'Resposta recebida' : 'Ação necessária')}
+      </span>
+    );
+  };
+
   // Loading state
   if (loading && !userRole) {
     return (
@@ -318,13 +406,12 @@ export default function App() {
     );
   }
 
-  // TELA DE LOGIN (Seleção de Perfil)
+  // TELA DE LOGIN
   if (!userRole) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 selection:bg-blue-200">
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-8 max-w-4xl w-full animate-in zoom-in-95 flex flex-col md:flex-row gap-8">
           
-          {/* Seção da Esquerda - Logo/Info */}
           <div className="md:w-1/3 flex flex-col justify-center items-center text-center md:border-r border-slate-100 md:pr-8">
             <div className="bg-blue-600 w-20 h-20 rounded-2xl flex items-center justify-center mb-6 shadow-lg text-white">
               <FolderKanban size={40} />
@@ -333,10 +420,8 @@ export default function App() {
             <p className="text-slate-500 text-sm">Gestão centralizada de demandas, prompts e soluções baseadas em Inteligência Artificial.</p>
           </div>
 
-          {/* Seção da Direita - Forms */}
           <div className="md:w-2/3 flex flex-col gap-6 justify-center">
             
-            {/* Form Solicitante */}
             <div className="p-6 border border-slate-200 rounded-xl bg-slate-50 hover:border-emerald-300 transition-colors shadow-sm">
               <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4 text-lg">
                 <Users className="text-emerald-600"/> Acesso do Solicitante
@@ -355,14 +440,12 @@ export default function App() {
               </form>
             </div>
 
-            {/* Separador */}
             <div className="relative flex items-center py-2">
               <div className="flex-grow border-t border-slate-200"></div>
               <span className="flex-shrink-0 mx-4 text-slate-400 text-xs font-medium uppercase tracking-wider">Acesso Restrito</span>
               <div className="flex-grow border-t border-slate-200"></div>
             </div>
 
-            {/* Form Admin */}
             <div className="p-6 border border-slate-200 rounded-xl bg-white hover:border-blue-300 transition-colors">
               <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4">
                 <ShieldCheck className="text-blue-600"/> Gestor do Sistema (Bruno)
@@ -390,60 +473,94 @@ export default function App() {
   const renderDashboard = () => {
     const stats = {
       total: projects.length,
+      awaitingInfo: projects.filter(p => p.status === 'awaiting_info').length,
       dev: projects.filter(p => p.status === 'development').length,
-      done: projects.filter(p => p.status === 'completed').length
+      done: projects.filter(p => p.status === 'completed').length,
+      needsAttention: projects.filter(p => p.attentionFor === 'admin').length
     };
 
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex items-center justify-between">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500">Total de Projetos</p>
-              <h3 className="text-3xl font-bold text-slate-800 mt-1">{stats.total}</h3>
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total</p>
+              <h3 className="text-2xl font-bold text-slate-800 mt-1">{stats.total}</h3>
             </div>
-            <div className="bg-blue-100 p-3 rounded-lg text-blue-600"><FolderKanban size={24} /></div>
+            <div className="bg-blue-100 p-2.5 rounded-lg text-blue-600"><FolderKanban size={20} /></div>
           </div>
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-500">Em Desenvolvimento</p>
-              <h3 className="text-3xl font-bold text-amber-600 mt-1">{stats.dev}</h3>
+          
+          {stats.needsAttention > 0 && (
+            <div className="bg-red-50 rounded-xl shadow-sm border border-red-200 p-5 flex items-center justify-between animate-pulse">
+              <div>
+                <p className="text-xs font-medium text-red-600 uppercase tracking-wider">Aguardando Você</p>
+                <h3 className="text-2xl font-bold text-red-700 mt-1">{stats.needsAttention}</h3>
+              </div>
+              <div className="bg-red-100 p-2.5 rounded-lg text-red-600"><Bell size={20} /></div>
             </div>
-            <div className="bg-amber-100 p-3 rounded-lg text-amber-600"><Clock size={24} /></div>
+          )}
+          
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Aguard. Info</p>
+              <h3 className="text-2xl font-bold text-purple-600 mt-1">{stats.awaitingInfo}</h3>
+            </div>
+            <div className="bg-purple-100 p-2.5 rounded-lg text-purple-600"><AlertCircle size={20} /></div>
           </div>
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex items-center justify-between">
+          
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500">Concluídos</p>
-              <h3 className="text-3xl font-bold text-emerald-600 mt-1">{stats.done}</h3>
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Em Dev</p>
+              <h3 className="text-2xl font-bold text-amber-600 mt-1">{stats.dev}</h3>
             </div>
-            <div className="bg-emerald-100 p-3 rounded-lg text-emerald-600"><Check size={24} /></div>
+            <div className="bg-amber-100 p-2.5 rounded-lg text-amber-600"><Clock size={20} /></div>
+          </div>
+          
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Concluídos</p>
+              <h3 className="text-2xl font-bold text-emerald-600 mt-1">{stats.done}</h3>
+            </div>
+            <div className="bg-emerald-100 p-2.5 rounded-lg text-emerald-600"><Check size={20} /></div>
           </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-            <h2 className="text-lg font-semibold text-slate-800">Atividade Recente Global</h2>
+            <h2 className="text-lg font-semibold text-slate-800">Atividade Recente</h2>
             <button onClick={() => setActiveTab('projects')} className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center">
               Ver todos <ChevronRight size={16} />
             </button>
           </div>
           <div className="divide-y divide-slate-100">
             {projects.slice(0, 5).map(project => (
-              <div key={project.id} className="p-6 hover:bg-slate-50 transition-colors flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-semibold text-slate-800">{project.name}</h3>
-                  <div className="flex items-center gap-4 mt-2 text-sm text-slate-500">
+              <div key={project.id} className="p-5 hover:bg-slate-50 transition-colors flex items-center justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-base font-semibold text-slate-800 truncate">{project.name}</h3>
+                    <AttentionBadge project={project} small />
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-slate-500">
                     {project.requesterEmail && (
-                      <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1 truncate">
                         <Mail size={14} /> {project.requesterEmail}
                       </span>
                     )}
-                    <span className="flex items-center gap-1"><Clock size={14} /> Atualizado {formatDate(project.updatedAt)}</span>
+                    <span className="flex items-center gap-1 whitespace-nowrap"><Clock size={14} /> {formatDate(project.updatedAt)}</span>
                   </div>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium border ${STATUS_CONFIG[project.status]?.color || ''}`}>
-                  {STATUS_CONFIG[project.status]?.label || project.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium border whitespace-nowrap ${STATUS_CONFIG[project.status]?.color || ''}`}>
+                    {STATUS_CONFIG[project.status]?.label || project.status}
+                  </span>
+                  <button 
+                    onClick={() => setViewingComments(project)}
+                    className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                    title="Comentários"
+                  >
+                    <MessageCircle size={18} />
+                  </button>
+                </div>
               </div>
             ))}
             {projects.length === 0 && (
@@ -475,7 +592,6 @@ export default function App() {
         </div>
 
         <form onSubmit={handleSaveProject} className="space-y-6">
-          {/* SEÇÃO 1: DADOS DA SOLICITAÇÃO */}
           <div className="space-y-6">
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Dados da Solicitação</h3>
             
@@ -530,7 +646,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* SEÇÃO 2: ÁREA DO DESENVOLVEDOR (Apenas Admin vê isso durante a edição) */}
           {isEdit && userRole === 'admin' && (
             <div className="mt-8 pt-6 border-t border-slate-200 space-y-6">
               <h3 className="text-sm font-bold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -629,6 +744,17 @@ export default function App() {
           </div>
         </div>
 
+        {/* Alerta para solicitante com projetos pendentes */}
+        {userRole === 'requester' && pendingAttentionCount > 0 && (
+          <div className="bg-purple-50 text-purple-800 p-4 rounded-xl text-sm flex items-start gap-3 border border-purple-200 animate-pulse">
+             <AlertCircle className="mt-0.5 shrink-0" size={20} />
+             <div>
+               <strong>Atenção!</strong> Você tem <strong>{pendingAttentionCount} projeto(s)</strong> aguardando sua resposta. 
+               O administrador solicitou mais informações. Clique no ícone de <MessageCircle size={14} className="inline" /> para responder.
+             </div>
+          </div>
+        )}
+
         {/* Informação sobre a Visão Global */}
         {activeTab === 'global' && userRole === 'requester' && (
           <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-sm flex items-start gap-3 border border-blue-200">
@@ -645,12 +771,19 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {filtered.map(project => {
             const canEdit = userRole === 'admin' || (project.requesterEmail && project.requesterEmail.toLowerCase() === userEmail.toLowerCase());
+            const needsMyAttention = (userRole === 'admin' && project.attentionFor === 'admin') ||
+                                     (userRole === 'requester' && project.attentionFor === 'requester');
 
             return (
-              <div key={project.id} className={`bg-white rounded-xl shadow-sm border hover:shadow-md transition-shadow flex flex-col h-full overflow-hidden ${!canEdit ? 'border-slate-200 opacity-90' : 'border-slate-300'}`}>
+              <div key={project.id} className={`bg-white rounded-xl shadow-sm border hover:shadow-md transition-shadow flex flex-col h-full overflow-hidden ${needsMyAttention ? 'border-purple-300 ring-2 ring-purple-200' : !canEdit ? 'border-slate-200 opacity-90' : 'border-slate-300'}`}>
                 <div className="p-6 flex-1">
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="font-bold text-lg text-slate-800 line-clamp-1" title={project.name}>{project.name}</h3>
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-bold text-lg text-slate-800 truncate" title={project.name}>{project.name}</h3>
+                      </div>
+                      <AttentionBadge project={project} />
+                    </div>
                     <span className={`px-2 py-1 rounded text-xs font-medium border whitespace-nowrap ml-2 ${STATUS_CONFIG[project.status]?.color || ''}`}>
                       {STATUS_CONFIG[project.status]?.label || project.status}
                     </span>
@@ -679,6 +812,11 @@ export default function App() {
                     <div className="flex items-center gap-2 text-xs text-slate-400">
                       <Clock size={14} /> {formatDate(project.updatedAt)}
                     </div>
+                    {(project.comments?.length > 0) && (
+                      <div className="flex items-center gap-2 text-xs text-purple-600">
+                        <MessageCircle size={14} /> {project.comments.length} comentário(s)
+                      </div>
+                    )}
                   </div>
                 </div>
                 
@@ -691,7 +829,18 @@ export default function App() {
                       <Edit size={16} /> Editar
                     </button>
                   )}
-                  <button onClick={() => setViewingHistory(project)} className="flex-1 flex justify-center items-center gap-1 px-2 py-1.5 text-sm font-medium text-amber-600 hover:bg-amber-100 rounded transition-colors" title="Histórico">
+                  <button 
+                    onClick={() => { 
+                      setViewingComments(project);
+                      if (needsMyAttention) handleMarkAsRead(project.id);
+                    }} 
+                    className={`flex-1 flex justify-center items-center gap-1 px-2 py-1.5 text-sm font-medium rounded transition-colors ${needsMyAttention ? 'text-purple-700 bg-purple-100 hover:bg-purple-200' : 'text-purple-600 hover:bg-purple-100'}`} 
+                    title="Comentários"
+                  >
+                    <MessageCircle size={16} />
+                    {needsMyAttention && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
+                  </button>
+                  <button onClick={() => setViewingHistory(project)} className="flex justify-center items-center px-2 py-1.5 text-sm font-medium text-amber-600 hover:bg-amber-100 rounded transition-colors" title="Histórico">
                     <History size={16} />
                   </button>
                   {userRole === 'admin' && (
@@ -814,12 +963,26 @@ export default function App() {
             <nav className="hidden md:flex gap-1 items-center">
               {userRole === 'admin' ? (
                 <>
-                  <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${activeTab === 'dashboard' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>Dashboard</button>
+                  <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-md font-medium text-sm transition-colors relative ${activeTab === 'dashboard' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
+                    Dashboard
+                    {pendingAttentionCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
+                        {pendingAttentionCount}
+                      </span>
+                    )}
+                  </button>
                   <button onClick={() => setActiveTab('projects')} className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${activeTab === 'projects' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>Todos os Projetos</button>
                 </>
               ) : (
                 <>
-                  <button onClick={() => setActiveTab('projects')} className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${activeTab === 'projects' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>Meus Projetos</button>
+                  <button onClick={() => setActiveTab('projects')} className={`px-4 py-2 rounded-md font-medium text-sm transition-colors relative ${activeTab === 'projects' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
+                    Meus Projetos
+                    {pendingAttentionCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
+                        {pendingAttentionCount}
+                      </span>
+                    )}
+                  </button>
                   <button onClick={() => setActiveTab('global')} className={`px-4 py-2 rounded-md font-medium text-sm transition-colors flex items-center gap-1 ${activeTab === 'global' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
                      <Globe size={16} /> Visão Global
                   </button>
@@ -854,9 +1017,23 @@ export default function App() {
       {/* Mobile Nav */}
       <div className="md:hidden bg-slate-800 text-white flex overflow-x-auto p-2 gap-2 shadow-inner">
         {userRole === 'admin' ? (
-           <button onClick={() => setActiveTab('dashboard')} className={`flex-1 py-2 px-3 rounded text-sm font-medium whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-slate-700' : 'text-slate-300'}`}>Dash</button>
+           <button onClick={() => setActiveTab('dashboard')} className={`relative flex-1 py-2 px-3 rounded text-sm font-medium whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-slate-700' : 'text-slate-300'}`}>
+             Dash
+             {pendingAttentionCount > 0 && (
+               <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                 {pendingAttentionCount}
+               </span>
+             )}
+           </button>
         ) : (
-           <button onClick={() => setActiveTab('projects')} className={`flex-1 py-2 px-3 rounded text-sm font-medium whitespace-nowrap ${activeTab === 'projects' ? 'bg-slate-700' : 'text-slate-300'}`}>Meus</button>
+           <button onClick={() => setActiveTab('projects')} className={`relative flex-1 py-2 px-3 rounded text-sm font-medium whitespace-nowrap ${activeTab === 'projects' ? 'bg-slate-700' : 'text-slate-300'}`}>
+             Meus
+             {pendingAttentionCount > 0 && (
+               <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                 {pendingAttentionCount}
+               </span>
+             )}
+           </button>
         )}
         <button onClick={() => setActiveTab(userRole === 'admin' ? 'projects' : 'global')} className={`flex-1 py-2 px-3 rounded text-sm font-medium whitespace-nowrap ${(activeTab === 'projects' && userRole === 'admin') || activeTab === 'global' ? 'bg-slate-700' : 'text-slate-300'}`}>
           {userRole === 'admin' ? 'Projetos' : 'Global'}
@@ -879,7 +1056,10 @@ export default function App() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95">
             <div className="p-6 border-b border-slate-200 flex justify-between items-start bg-slate-50">
               <div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">{viewingProject.name}</h2>
+                <div className="flex items-center gap-3 mb-2">
+                  <h2 className="text-2xl font-bold text-slate-800">{viewingProject.name}</h2>
+                  <AttentionBadge project={viewingProject} />
+                </div>
                 <div className="flex flex-wrap gap-3 text-sm text-slate-500">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_CONFIG[viewingProject.status]?.color || ''}`}>
                     {STATUS_CONFIG[viewingProject.status]?.label || viewingProject.status}
@@ -948,7 +1128,16 @@ export default function App() {
               )}
             </div>
             
-            <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between gap-3">
+              <button 
+                onClick={() => { 
+                  setViewingProject(null); 
+                  setViewingComments(viewingProject); 
+                }} 
+                className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium flex items-center gap-2"
+              >
+                <MessageCircle size={16} /> Comentários ({viewingProject.comments?.length || 0})
+              </button>
               {(userRole === 'admin' || (viewingProject.requesterEmail && viewingProject.requesterEmail.toLowerCase() === userEmail.toLowerCase())) && (
                 <button onClick={() => { 
                   const p = viewingProject; 
@@ -959,6 +1148,99 @@ export default function App() {
                   <Edit size={16} /> Editar Projeto
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Comentários */}
+      {viewingComments && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex justify-center items-center p-4 sm:p-6 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-gradient-to-r from-purple-50 to-slate-50">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                  <MessageCircle className="text-purple-600" size={24} />
+                  Comunicação do Projeto
+                </h2>
+                <p className="text-sm text-slate-500 mt-1">{viewingComments.name}</p>
+              </div>
+              <button onClick={() => setViewingComments(null)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50 space-y-4">
+              {viewingComments.comments && viewingComments.comments.length > 0 ? (
+                viewingComments.comments.map((comment) => (
+                  <div 
+                    key={comment.id} 
+                    className={`p-4 rounded-xl ${
+                      comment.role === 'admin' 
+                        ? 'bg-blue-50 border border-blue-200 ml-4' 
+                        : 'bg-white border border-slate-200 mr-4'
+                    } ${comment.isInfoRequest ? 'ring-2 ring-purple-300' : ''}`}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${comment.role === 'admin' ? 'bg-blue-600' : 'bg-emerald-600'}`}>
+                          {comment.role === 'admin' ? 'A' : comment.author.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-medium text-slate-800 text-sm">{comment.author}</p>
+                          <p className="text-xs text-slate-500">{formatDate(comment.date)}</p>
+                        </div>
+                      </div>
+                      {comment.isInfoRequest && (
+                        <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full flex items-center gap-1">
+                          <AlertCircle size={12} /> Solicitação de Info
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-700 text-sm whitespace-pre-wrap pl-10">{comment.message}</p>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-10">
+                  <MessageSquare className="mx-auto h-12 w-12 text-slate-300 mb-3" />
+                  <p className="text-slate-500">Nenhum comentário ainda.</p>
+                  <p className="text-xs text-slate-400 mt-1">Use o campo abaixo para iniciar a comunicação.</p>
+                </div>
+              )}
+            </div>
+            
+            {/* Form de novo comentário */}
+            <div className="p-4 border-t border-slate-200 bg-white">
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const message = e.target.message.value;
+                const requestInfo = e.target.requestInfo?.checked || false;
+                handleSendComment(viewingComments.id, message, requestInfo);
+                e.target.reset();
+              }} className="space-y-3">
+                <textarea 
+                  name="message" 
+                  rows="3" 
+                  required
+                  placeholder={userRole === 'admin' ? "Escreva uma mensagem ou solicite mais informações..." : "Responda à solicitação ou adicione informações..."}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all resize-none text-sm"
+                ></textarea>
+                
+                <div className="flex justify-between items-center">
+                  {userRole === 'admin' && (
+                    <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer hover:text-purple-600 transition-colors">
+                      <input type="checkbox" name="requestInfo" className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500" />
+                      <AlertCircle size={16} />
+                      Marcar como solicitação de informações
+                    </label>
+                  )}
+                  {userRole !== 'admin' && <div></div>}
+                  
+                  <button type="submit" className="px-5 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium text-sm flex items-center gap-2 shadow-sm">
+                    <Send size={16} /> Enviar
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
