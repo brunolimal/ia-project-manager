@@ -299,7 +299,7 @@ export default function App() {
     }
   };
 
-  // --- SISTEMA DE COMENTÁRIOS ---
+  // --- SISTEMA DE COMENTÁRIOS COM E-MAIL ---
   const handleSendComment = async (projectId, message, requestInfo = false) => {
     if (!message.trim()) return;
 
@@ -335,7 +335,83 @@ export default function App() {
         .eq('id', projectId);
 
       if (error) throw error;
-      
+
+      // 📧 ENVIAR E-MAIL DE NOTIFICAÇÃO
+      try {
+        // Define o destinatário
+        // Se admin comentou → manda pro e-mail do cliente (project.requesterEmail)
+        // Se cliente comentou → manda pro admin (bruno@maisescoramentos.com.br)
+        const emailTo = userRole === 'admin' ? project.requesterEmail : 'bruno@maisescoramentos.com.br';
+        
+        const emailSubject = requestInfo 
+          ? `⚠️ Solicitação de informações - Projeto: ${project.name}`
+          : `💬 Novo comentário - Projeto: ${project.name}`;
+
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 20px; border-radius: 10px 10px 0 0;">
+              <h2 style="color: white; margin: 0;">🤖 IA Project Manager</h2>
+            </div>
+            
+            <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none;">
+              <h3 style="color: #1f2937; margin-top: 0;">
+                ${requestInfo ? '⚠️ Solicitação de Informações' : '💬 Novo Comentário'}
+              </h3>
+              
+              <table style="width: 100%; margin-bottom: 20px;">
+                <tr>
+                  <td style="padding: 8px 0; color: #6b7280;"><strong>Projeto:</strong></td>
+                  <td style="padding: 8px 0; color: #1f2937;">${project.name}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #6b7280;"><strong>De:</strong></td>
+                  <td style="padding: 8px 0; color: #1f2937;">${newComment.author}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #6b7280;"><strong>Data:</strong></td>
+                  <td style="padding: 8px 0; color: #1f2937;">${new Date().toLocaleString('pt-BR')}</td>
+                </tr>
+              </table>
+              
+              <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; border-left: 4px solid #7c3aed;">
+                <p style="margin: 0; color: #1f2937; white-space: pre-wrap;">${message}</p>
+              </div>
+              
+              <div style="text-align: center; margin-top: 30px;">
+                <a href="https://ia-project-manager.vercel.app" 
+                   style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); 
+                          color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; 
+                          font-weight: bold; font-size: 16px;">
+                  Acessar o Sistema
+                </a>
+              </div>
+            </div>
+            
+            <div style="background: #f9fafb; padding: 15px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb; border-top: none;">
+              <p style="color: #9ca3af; font-size: 12px; margin: 0; text-align: center;">
+                Este é um e-mail automático do IA Project Manager.<br>
+                © ${new Date().getFullYear()} Mais Escoramentos
+              </p>
+            </div>
+          </div>
+        `;
+
+        await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: emailTo,
+            subject: emailSubject,
+            html: emailHtml
+          })
+        });
+
+        console.log('📧 E-mail enviado para:', emailTo);
+      } catch (emailError) {
+        console.error('Erro ao enviar e-mail:', emailError);
+        // Não bloqueia o fluxo se o e-mail falhar
+      }
+
       showToast(requestInfo ? 'Solicitação de informações enviada!' : 'Comentário enviado!');
     } catch (error) {
       console.error("Erro ao enviar comentário:", error);
