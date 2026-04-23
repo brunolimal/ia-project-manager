@@ -244,6 +244,7 @@ export default function App() {
 
     try {
       if (editingProject) {
+        // ========== EDIÇÃO DE PROJETO ==========
         const newVersion = {
           version: (editingProject.versions || []).length + 1,
           date: new Date().toISOString(),
@@ -263,13 +264,229 @@ export default function App() {
           .eq('id', editingProject.id);
 
         if (error) throw error;
+
+        // 📧 E-MAIL DE ATUALIZAÇÃO
+        try {
+          const emailTo = userRole === 'admin' 
+            ? editingProject.requesterEmail 
+            : 'bruno@maisescoramentos.com.br';
+          
+          const emailSubject = `🔄 Projeto Atualizado: ${projectData.name}`;
+
+          const emailHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+              <div style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 20px; border-radius: 10px 10px 0 0; text-align: center;">
+                <img src="https://ia-project-manager-jqv8.vercel.app/mais-ia.jpeg" alt="Mais IA" style="max-height: 60px; margin-bottom: 10px;" />
+                <h2 style="color: white; margin: 0;">Projeto Atualizado</h2>
+              </div>
+              
+              <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none;">
+                <h3 style="color: #1f2937; margin-top: 0;">🔄 ${projectData.name}</h3>
+                
+                <table style="width: 100%; margin-bottom: 20px;">
+                  <tr>
+                    <td style="padding: 8px 0; color: #6b7280;"><strong>Atualizado por:</strong></td>
+                    <td style="padding: 8px 0; color: #1f2937;">${userRole === 'admin' ? 'Bruno Andrade (Admin)' : userEmail}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #6b7280;"><strong>Status:</strong></td>
+                    <td style="padding: 8px 0; color: #1f2937;">${STATUS_CONFIG[projectData.status]?.label || projectData.status}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #6b7280;"><strong>Data:</strong></td>
+                    <td style="padding: 8px 0; color: #1f2937;">${new Date().toLocaleString('pt-BR')}</td>
+                  </tr>
+                </table>
+                
+                <div style="background: #fef3c7; padding: 15px; border-radius: 8px; border-left: 4px solid #f59e0b; margin-bottom: 20px;">
+                  <p style="margin: 0; color: #92400e; font-size: 14px;">
+                    <strong>Descrição:</strong> ${projectData.description || 'Sem descrição'}
+                  </p>
+                </div>
+                
+                <div style="text-align: center; margin-top: 30px;">
+                  <a href="https://ia-project-manager-jqv8.vercel.app" 
+                     style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); 
+                            color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; 
+                            font-weight: bold; font-size: 16px;">
+                    Ver Projeto
+                  </a>
+                </div>
+              </div>
+              
+              <div style="background: #f9fafb; padding: 15px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb; border-top: none;">
+                <p style="color: #9ca3af; font-size: 12px; margin: 0; text-align: center;">
+                  E-mail automático - Mais IA © ${new Date().getFullYear()}
+                </p>
+              </div>
+            </div>
+          `;
+
+          await fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: emailTo,
+              subject: emailSubject,
+              html: emailHtml
+            })
+          });
+
+          console.log('📧 E-mail de atualização enviado para:', emailTo);
+        } catch (emailError) {
+          console.error('Erro ao enviar e-mail de atualização:', emailError);
+        }
+
         showToast('Projeto atualizado com sucesso!');
+
       } else {
-        const { error } = await supabase
+        // ========== NOVO PROJETO ==========
+        const { data, error } = await supabase
           .from('projects')
-          .insert([toSnakeCase(projectData)]);
+          .insert([toSnakeCase(projectData)])
+          .select();
 
         if (error) throw error;
+
+        // 📧 E-MAIL DE NOVA SOLICITAÇÃO
+        try {
+          // E-mail para o ADMIN
+          const adminEmailHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+              <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 20px; border-radius: 10px 10px 0 0; text-align: center;">
+                <img src="https://ia-project-manager-jqv8.vercel.app/mais-ia.jpeg" alt="Mais IA" style="max-height: 60px; margin-bottom: 10px;" />
+                <h2 style="color: white; margin: 0;">🆕 Nova Solicitação!</h2>
+              </div>
+              
+              <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none;">
+                <h3 style="color: #1f2937; margin-top: 0;">${projectData.name}</h3>
+                
+                <table style="width: 100%; margin-bottom: 20px;">
+                  <tr>
+                    <td style="padding: 8px 0; color: #6b7280;"><strong>Solicitante:</strong></td>
+                    <td style="padding: 8px 0; color: #1f2937;">${projectData.requesterEmail}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #6b7280;"><strong>Departamento:</strong></td>
+                    <td style="padding: 8px 0; color: #1f2937;">${projectData.department || 'Não informado'}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #6b7280;"><strong>Data:</strong></td>
+                    <td style="padding: 8px 0; color: #1f2937;">${new Date().toLocaleString('pt-BR')}</td>
+                  </tr>
+                </table>
+                
+                <div style="background: #ecfdf5; padding: 15px; border-radius: 8px; border-left: 4px solid #10b981; margin-bottom: 20px;">
+                  <p style="margin: 0; color: #065f46; font-size: 14px;">
+                    <strong>Descrição:</strong> ${projectData.description || 'Sem descrição'}
+                  </p>
+                </div>
+
+                ${projectData.premises ? `
+                <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                  <p style="margin: 0; color: #374151; font-size: 14px;">
+                    <strong>Premissas:</strong><br/>${projectData.premises}
+                  </p>
+                </div>
+                ` : ''}
+                
+                <div style="text-align: center; margin-top: 30px;">
+                  <a href="https://ia-project-manager-jqv8.vercel.app" 
+                     style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); 
+                            color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; 
+                            font-weight: bold; font-size: 16px;">
+                    Acessar o Sistema
+                  </a>
+                </div>
+              </div>
+              
+              <div style="background: #f9fafb; padding: 15px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb; border-top: none;">
+                <p style="color: #9ca3af; font-size: 12px; margin: 0; text-align: center;">
+                  E-mail automático - Mais IA © ${new Date().getFullYear()}
+                </p>
+              </div>
+            </div>
+          `;
+
+          // E-mail para o SOLICITANTE
+          const userEmailHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+              <div style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 20px; border-radius: 10px 10px 0 0; text-align: center;">
+                <img src="https://ia-project-manager-jqv8.vercel.app/mais-ia.jpeg" alt="Mais IA" style="max-height: 60px; margin-bottom: 10px;" />
+                <h2 style="color: white; margin: 0;">✅ Solicitação Recebida!</h2>
+              </div>
+              
+              <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none;">
+                <p style="color: #374151; font-size: 16px;">Olá! Sua solicitação foi registrada com sucesso.</p>
+                
+                <h3 style="color: #1f2937;">${projectData.name}</h3>
+                
+                <table style="width: 100%; margin-bottom: 20px;">
+                  <tr>
+                    <td style="padding: 8px 0; color: #6b7280;"><strong>Departamento:</strong></td>
+                    <td style="padding: 8px 0; color: #1f2937;">${projectData.department || 'Não informado'}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #6b7280;"><strong>Status:</strong></td>
+                    <td style="padding: 8px 0; color: #1f2937;">📋 Planejamento</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #6b7280;"><strong>Data:</strong></td>
+                    <td style="padding: 8px 0; color: #1f2937;">${new Date().toLocaleString('pt-BR')}</td>
+                  </tr>
+                </table>
+                
+                <div style="background: #dbeafe; padding: 15px; border-radius: 8px; border-left: 4px solid #2563eb; margin-bottom: 20px;">
+                  <p style="margin: 0; color: #1e40af; font-size: 14px;">
+                    📬 Você receberá atualizações por e-mail sempre que houver mudanças no seu projeto.
+                  </p>
+                </div>
+                
+                <div style="text-align: center; margin-top: 30px;">
+                  <a href="https://ia-project-manager-jqv8.vercel.app" 
+                     style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); 
+                            color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; 
+                            font-weight: bold; font-size: 16px;">
+                    Acompanhar Projeto
+                  </a>
+                </div>
+              </div>
+              
+              <div style="background: #f9fafb; padding: 15px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb; border-top: none;">
+                <p style="color: #9ca3af; font-size: 12px; margin: 0; text-align: center;">
+                  E-mail automático - Mais IA © ${new Date().getFullYear()}
+                </p>
+              </div>
+            </div>
+          `;
+
+          // Envia para o ADMIN
+          await fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: 'bruno@maisescoramentos.com.br',
+              subject: `🆕 Nova Solicitação: ${projectData.name}`,
+              html: adminEmailHtml
+            })
+          });
+
+          // Envia para o SOLICITANTE
+          await fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: projectData.requesterEmail,
+              subject: `✅ Solicitação Recebida: ${projectData.name}`,
+              html: userEmailHtml
+            })
+          });
+
+          console.log('📧 E-mails de nova solicitação enviados!');
+        } catch (emailError) {
+          console.error('Erro ao enviar e-mails:', emailError);
+        }
+
         showToast('Solicitação criada com sucesso!');
       }
 
@@ -317,10 +534,7 @@ export default function App() {
 
     const updatedComments = [...(project.comments || []), newComment];
     
-    // Define quem precisa prestar atenção
     const attentionFor = userRole === 'admin' ? 'requester' : 'admin';
-    
-    // Se admin está solicitando info, muda o status
     const newStatus = requestInfo ? 'awaiting_info' : project.status;
 
     try {
@@ -338,9 +552,6 @@ export default function App() {
 
       // 📧 ENVIAR E-MAIL DE NOTIFICAÇÃO
       try {
-        // Define o destinatário
-        // Se admin comentou → manda pro e-mail do cliente (project.requesterEmail)
-        // Se cliente comentou → manda pro admin (bruno@maisescoramentos.com.br)
         const emailTo = userRole === 'admin' ? project.requesterEmail : 'bruno@maisescoramentos.com.br';
         
         const emailSubject = requestInfo 
@@ -410,7 +621,6 @@ export default function App() {
         console.log('📧 E-mail enviado para:', emailTo);
       } catch (emailError) {
         console.error('Erro ao enviar e-mail:', emailError);
-        // Não bloqueia o fluxo se o e-mail falhar
       }
 
       showToast(requestInfo ? 'Solicitação de informações enviada!' : 'Comentário enviado!');
@@ -456,7 +666,6 @@ export default function App() {
     </div>
   );
 
-  // Badge de atenção
   const AttentionBadge = ({ project, small = false }) => {
     const needsMyAttention = (userRole === 'admin' && project.attentionFor === 'admin') ||
                              (userRole === 'requester' && project.attentionFor === 'requester');
@@ -484,14 +693,13 @@ export default function App() {
   }
 
   // ========================================
-  // 🔐 TELA DE LOGIN - ATUALIZADA COM LOGO
+  // 🔐 TELA DE LOGIN
   // ========================================
   if (!userRole) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 selection:bg-blue-200">
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-8 max-w-4xl w-full animate-in zoom-in-95 flex flex-col md:flex-row gap-8">
           
-          {/* Lado esquerdo - Logo e Título */}
           <div className="md:w-1/3 flex flex-col justify-center items-center text-center md:border-r border-slate-100 md:pr-8">
             <img 
               src="/mais-ia.jpeg" 
@@ -502,10 +710,8 @@ export default function App() {
             <p className="text-slate-400 text-xs mt-4">Gestão centralizada de demandas, prompts e soluções baseadas em IA.</p>
           </div>
 
-          {/* Lado direito - Formulários de Login */}
           <div className="md:w-2/3 flex flex-col gap-6 justify-center">
             
-            {/* Login Solicitante */}
             <div className="p-6 border border-slate-200 rounded-xl bg-slate-50 hover:border-emerald-300 transition-colors shadow-sm">
               <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4 text-lg">
                 <Users className="text-emerald-600"/> Acesso do Solicitante
@@ -524,14 +730,12 @@ export default function App() {
               </form>
             </div>
 
-            {/* Divisor */}
             <div className="relative flex items-center py-2">
               <div className="flex-grow border-t border-slate-200"></div>
               <span className="flex-shrink-0 mx-4 text-slate-400 text-xs font-medium uppercase tracking-wider">Acesso Restrito</span>
               <div className="flex-grow border-t border-slate-200"></div>
             </div>
 
-            {/* Login Admin */}
             <div className="p-6 border border-slate-200 rounded-xl bg-white hover:border-blue-300 transition-colors">
               <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4">
                 <ShieldCheck className="text-blue-600"/> Gestor do Sistema (Bruno)
@@ -804,7 +1008,6 @@ export default function App() {
 
     return (
       <div className="space-y-6 animate-in fade-in">
-        {/* Barra de Ferramentas */}
         <div className="flex flex-col md:flex-row justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
           <div className="flex flex-1 gap-4">
             <div className="relative flex-1 max-w-md">
@@ -830,7 +1033,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Alerta para solicitante com projetos pendentes */}
         {userRole === 'requester' && pendingAttentionCount > 0 && (
           <div className="bg-purple-50 text-purple-800 p-4 rounded-xl text-sm flex items-start gap-3 border border-purple-200 animate-pulse">
              <AlertCircle className="mt-0.5 shrink-0" size={20} />
@@ -841,7 +1043,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Informação sobre a Visão Global */}
         {activeTab === 'global' && userRole === 'requester' && (
           <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-sm flex items-start gap-3 border border-blue-200">
              <Globe className="mt-0.5 shrink-0" size={18} />
@@ -853,7 +1054,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Grid de Projetos */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {filtered.map(project => {
             const canEdit = userRole === 'admin' || (project.requesterEmail && project.requesterEmail.toLowerCase() === userEmail.toLowerCase());
@@ -1023,7 +1223,7 @@ export default function App() {
   };
 
   // ========================================
-  // 🎨 RENDERIZAÇÃO PRINCIPAL - HEADER COM LOGO
+  // 🎨 RENDERIZAÇÃO PRINCIPAL
   // ========================================
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-blue-200">
@@ -1034,12 +1234,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Header & Navigation - ATUALIZADO COM LOGO */}
       <header className="bg-slate-900 text-white sticky top-0 z-30 shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              {/* Logo no lugar do ícone */}
               <img 
                 src="/mais-ia.jpeg" 
                 alt="Mais IA" 
@@ -1107,7 +1305,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* Mobile Nav */}
       <div className="md:hidden bg-slate-800 text-white flex overflow-x-auto p-2 gap-2 shadow-inner">
         {userRole === 'admin' ? (
            <button onClick={() => setActiveTab('dashboard')} className={`relative flex-1 py-2 px-3 rounded text-sm font-medium whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-slate-700' : 'text-slate-300'}`}>
@@ -1135,7 +1332,6 @@ export default function App() {
         <button onClick={handleLogout} className="flex-1 py-2 px-3 rounded text-sm font-medium whitespace-nowrap text-rose-400">Sair</button>
       </div>
 
-      {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'dashboard' && userRole === 'admin' && renderDashboard()}
         {(activeTab === 'projects' || activeTab === 'global') && renderProjects()}
@@ -1302,7 +1498,6 @@ export default function App() {
               )}
             </div>
             
-            {/* Form de novo comentário */}
             <div className="p-4 border-t border-slate-200 bg-white">
               <form onSubmit={(e) => {
                 e.preventDefault();
