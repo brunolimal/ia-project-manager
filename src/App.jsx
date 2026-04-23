@@ -242,6 +242,10 @@ export default function App() {
       status: formObj.status || (editingProject ? editingProject.status : 'planning')
     };
 
+    console.log('🚀 Iniciando salvamento do projeto...');
+    console.log('📋 Dados do projeto:', projectData);
+    console.log('✏️ É edição?', !!editingProject);
+
     try {
       if (editingProject) {
         // ========== EDIÇÃO DE PROJETO ==========
@@ -265,18 +269,22 @@ export default function App() {
 
         if (error) throw error;
 
+        console.log('✅ Projeto atualizado no Supabase');
+        console.log('📧 Iniciando envio de e-mail de atualização...');
+
         // 📧 E-MAIL DE ATUALIZAÇÃO
         try {
           const emailTo = userRole === 'admin' 
             ? editingProject.requesterEmail 
             : 'bruno@maisescoramentos.com.br';
           
+          console.log('📧 Destinatário:', emailTo);
+
           const emailSubject = `🔄 Projeto Atualizado: ${projectData.name}`;
 
           const emailHtml = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
               <div style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 20px; border-radius: 10px 10px 0 0; text-align: center;">
-                <img src="https://ia-project-manager-jqv8.vercel.app/mais-ia.jpeg" alt="Mais IA" style="max-height: 60px; margin-bottom: 10px;" />
                 <h2 style="color: white; margin: 0;">Projeto Atualizado</h2>
               </div>
               
@@ -322,7 +330,7 @@ export default function App() {
             </div>
           `;
 
-          await fetch('/api/send-email', {
+          const response = await fetch('/api/send-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -332,15 +340,19 @@ export default function App() {
             })
           });
 
-          console.log('📧 E-mail de atualização enviado para:', emailTo);
+          const result = await response.json();
+          console.log('📧 Resposta do e-mail de atualização:', result);
+
         } catch (emailError) {
-          console.error('Erro ao enviar e-mail de atualização:', emailError);
+          console.error('❌ Erro ao enviar e-mail de atualização:', emailError);
         }
 
         showToast('Projeto atualizado com sucesso!');
 
       } else {
         // ========== NOVO PROJETO ==========
+        console.log('🆕 Criando novo projeto...');
+        
         const { data, error } = await supabase
           .from('projects')
           .insert([toSnakeCase(projectData)])
@@ -348,13 +360,18 @@ export default function App() {
 
         if (error) throw error;
 
+        console.log('✅ Projeto criado no Supabase:', data);
+        console.log('📧 Iniciando envio de e-mails...');
+        console.log('📧 E-mail do solicitante:', projectData.requesterEmail);
+
         // 📧 E-MAIL DE NOVA SOLICITAÇÃO
         try {
+          console.log('📧 Preparando e-mail para ADMIN...');
+          
           // E-mail para o ADMIN
           const adminEmailHtml = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
               <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 20px; border-radius: 10px 10px 0 0; text-align: center;">
-                <img src="https://ia-project-manager-jqv8.vercel.app/mais-ia.jpeg" alt="Mais IA" style="max-height: 60px; margin-bottom: 10px;" />
                 <h2 style="color: white; margin: 0;">🆕 Nova Solicitação!</h2>
               </div>
               
@@ -408,11 +425,25 @@ export default function App() {
             </div>
           `;
 
+          const adminResponse = await fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: 'bruno@maisescoramentos.com.br',
+              subject: `🆕 Nova Solicitação: ${projectData.name}`,
+              html: adminEmailHtml
+            })
+          });
+
+          const adminResult = await adminResponse.json();
+          console.log('📧 Resposta e-mail ADMIN:', adminResult);
+
+          console.log('📧 Preparando e-mail para SOLICITANTE...');
+
           // E-mail para o SOLICITANTE
           const userEmailHtml = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
               <div style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 20px; border-radius: 10px 10px 0 0; text-align: center;">
-                <img src="https://ia-project-manager-jqv8.vercel.app/mais-ia.jpeg" alt="Mais IA" style="max-height: 60px; margin-bottom: 10px;" />
                 <h2 style="color: white; margin: 0;">✅ Solicitação Recebida!</h2>
               </div>
               
@@ -460,19 +491,7 @@ export default function App() {
             </div>
           `;
 
-          // Envia para o ADMIN
-          await fetch('/api/send-email', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: 'bruno@maisescoramentos.com.br',
-              subject: `🆕 Nova Solicitação: ${projectData.name}`,
-              html: adminEmailHtml
-            })
-          });
-
-          // Envia para o SOLICITANTE
-          await fetch('/api/send-email', {
+          const userResponse = await fetch('/api/send-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -482,9 +501,12 @@ export default function App() {
             })
           });
 
-          console.log('📧 E-mails de nova solicitação enviados!');
+          const userResult = await userResponse.json();
+          console.log('📧 Resposta e-mail SOLICITANTE:', userResult);
+
+          console.log('✅📧 E-mails de nova solicitação enviados com sucesso!');
         } catch (emailError) {
-          console.error('Erro ao enviar e-mails:', emailError);
+          console.error('❌ Erro ao enviar e-mails:', emailError);
         }
 
         showToast('Solicitação criada com sucesso!');
@@ -494,7 +516,7 @@ export default function App() {
       setActiveTab('projects');
 
     } catch (error) {
-      console.error("Erro ao salvar:", error);
+      console.error("❌ Erro ao salvar:", error);
       showToast('Erro ao salvar os dados na nuvem', 'error');
     }
   };
@@ -550,10 +572,14 @@ export default function App() {
 
       if (error) throw error;
 
+      console.log('💬 Comentário salvo, enviando e-mail...');
+
       // 📧 ENVIAR E-MAIL DE NOTIFICAÇÃO
       try {
         const emailTo = userRole === 'admin' ? project.requesterEmail : 'bruno@maisescoramentos.com.br';
         
+        console.log('📧 Enviando notificação para:', emailTo);
+
         const emailSubject = requestInfo 
           ? `⚠️ Solicitação de informações - Projeto: ${project.name}`
           : `💬 Novo comentário - Projeto: ${project.name}`;
@@ -561,8 +587,7 @@ export default function App() {
         const emailHtml = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 20px; border-radius: 10px 10px 0 0; text-align: center;">
-              <img src="https://ia-project-manager-jqv8.vercel.app/mais-ia.jpeg" alt="Mais IA" style="max-height: 60px; margin-bottom: 10px;" />
-              <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Inteligência para Novas Soluções</p>
+              <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Mais IA - Inteligência para Novas Soluções</p>
             </div>
             
             <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none;">
@@ -608,7 +633,7 @@ export default function App() {
           </div>
         `;
 
-        await fetch('/api/send-email', {
+        const response = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -618,9 +643,10 @@ export default function App() {
           })
         });
 
-        console.log('📧 E-mail enviado para:', emailTo);
+        const result = await response.json();
+        console.log('📧 Resposta do e-mail de comentário:', result);
       } catch (emailError) {
-        console.error('Erro ao enviar e-mail:', emailError);
+        console.error('❌ Erro ao enviar e-mail:', emailError);
       }
 
       showToast(requestInfo ? 'Solicitação de informações enviada!' : 'Comentário enviado!');
